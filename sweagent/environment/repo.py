@@ -1,5 +1,6 @@
 import asyncio
 import os
+import shutil
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
@@ -104,8 +105,15 @@ class LocalRepoConfig(BaseModel):
         self.check_valid_repo()
         target_path = f"{repo_base_dir}/{self.repo_name}"
 
+        # To support multiple local runs, remove the target if it exists under /tmp.
+        # Deleting paths in /tmp is safe in this context.
+        if Path(target_path).exists() and target_path.startswith("/tmp"):
+            shutil.rmtree(target_path)
         asyncio.run(deployment.runtime.upload(UploadRequest(source_path=str(self.path), target_path=target_path)))
 
+        # Only chown if running at root (repo_base_dir == '').
+        if repo_base_dir != "":
+            return
         r = asyncio.run(deployment.runtime.execute(Command(command=f"chown -R root:root {self.repo_name}", shell=True)))
         if r.exit_code != 0:
             msg = f"Failed to change permissions on copied repository (exit code: {r.exit_code}, stdout: {r.stdout}, stderr: {r.stderr})"
